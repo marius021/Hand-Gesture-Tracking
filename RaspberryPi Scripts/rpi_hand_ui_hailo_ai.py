@@ -48,7 +48,8 @@ class CommandSender:
             return False
 
         try:
-            self.sock.sendall(command.encode("utf-8"))
+            self.sock.sendall((command + "\n").encode("utf-8"))
+
             return True
         except:
             print("[TCP] Lost connection — reconnecting...")
@@ -222,6 +223,11 @@ def main():
 
         dt = (time.time() - start_t)*1000
         fps = 1000/max(dt,0.0001)
+
+        if hailo_enabled and cx != -1:
+            print(f"[DEBUG] Hailo used: score={hailo_score:.4f}, valid={hailo_valid}")
+        else:
+            print(f"[DEBUG] Hailo NOT used (hailo_enabled={hailo_enabled}, cx={cx})")
 
         logger.log(
             fps=fps,
