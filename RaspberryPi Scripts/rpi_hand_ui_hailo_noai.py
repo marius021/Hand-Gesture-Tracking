@@ -1,8 +1,9 @@
 import cv2
 import numpy as np
 import time
-import pandas as pd
 import socket
+import mediapipe as mp
+
 from logger import DataLogger
 
 ####################################################
@@ -12,7 +13,7 @@ from logger import DataLogger
 MAX_COMMANDS = 100
 CSV_NAME = "session_no_ai.csv"
 
-TCP_IP = "192.168.88.252"
+TCP_IP = "192.168.88.230"
 TCP_PORT = 5005
 
 ROI_X1, ROI_Y1 = 100, 100
@@ -39,7 +40,7 @@ class CommandSender:
             print("[TCP] Failed to connect.")
             self.sock = None
 
-    def send(self, command):
+    def send(self, command: str) -> bool:
         if self.sock is None:
             self.connect()
             return False
@@ -54,7 +55,7 @@ class CommandSender:
 
 
 ####################################################
-# MAIN LOOP (NO AI)
+# MAIN LOOP (NO AI – doar vision + MediaPipe)
 ####################################################
 
 def main():
@@ -67,6 +68,8 @@ def main():
     last_cmd = ""
     sent_count = 0
 
+    mp_hands = None
+
     print("[SYSTEM] Running... Press 'q' to quit.")
 
     while True:
@@ -77,12 +80,23 @@ def main():
             print("[Camera] Frame error.")
             break
 
-        # Region of interest
+        # ROI pentru detecția mâinii
         roi = frame[ROI_Y1:ROI_Y2, ROI_X1:ROI_X2]
         roi_h, roi_w, _ = roi.shape
 
+        # Lazy init MediaPipe
+        if mp_hands is None:
+            print("[MediaPipe] Initializing...")
+            mp_hands = mp.solutions.hands.Hands(
+                static_image_mode=False,
+                max_num_hands=1,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+            print("[MediaPipe] READY.")
+
         #############################
-        # BASIC SKIN SEGMENTATION
+        # BASIC SKIN SEGMENTATION (ROI)
         #############################
 
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -113,20 +127,39 @@ def main():
                     else:
                         command = "Centered"
 
+                # punct galben în ROI - centroid
                 cv2.circle(roi, (cx, cy), 7, (0, 255, 255), -1)
+
+        #############################
+        # MEDIAPIPE LANDMARKS (PUNCTE VERZI)
+        #############################
+
+        mediapipe_landmarks = 0
+
+        mp_rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
+        result = mp_hands.process(mp_rgb)
+
+        if result.multi_hand_landmarks:
+            lm = result.multi_hand_landmarks[0]
+            mediapipe_landmarks = len(lm.landmark)
+
+            for p in lm.landmark:
+                lx = int(p.x * roi_w)
+                ly = int(p.y * roi_h)
+                cv2.circle(roi, (lx, ly), 3, (0, 255, 0), -1)
 
         #############################
         # SEND COMMAND
         #############################
 
         tcp_sent = 0
-        tcp_reconnect = 0
+        tcp_reconnected = 0
 
         if command != last_cmd:
             ok = sender.send(command)
             tcp_sent = 1
             if not ok:
-                tcp_reconnect = 1
+                tcp_reconnected = 1
 
             last_cmd = command
             sent_count += 1
@@ -143,7 +176,7 @@ def main():
             break
 
         #############################
-        # LOGGING
+        # LOGGING – aliniat cu logger.py și scriptul AI
         #############################
 
         dt = (time.time() - t0) * 1000
@@ -152,12 +185,12 @@ def main():
         logger.log(
             fps=fps,
             frame_time_ms=dt,
-            hailo_score=0.0,           # no AI
-            hailo_valid=0,             # no AI
-            mediapipe_points=0,        # no AI
+            hailo_score=0.0,                  # no AI
+            hailo_valid=0,                    # no AI
+            mediapipe_landmarks=mediapipe_landmarks,
             command=command,
             tcp_sent=tcp_sent,
-            tcp_reconnected=tcp_reconnect,
+            tcp_reconnected=tcp_reconnected,
             cx=cx,
             cy=cy
         )
@@ -168,7 +201,7 @@ def main():
 
         cv2.rectangle(frame, (ROI_X1, ROI_Y1), (ROI_X2, ROI_Y2), (255, 255, 0), 2)
         cv2.putText(frame, command, (20, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)  # roșu = NO AI
 
         cv2.imshow("UI NON-AI", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -185,4 +218,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
