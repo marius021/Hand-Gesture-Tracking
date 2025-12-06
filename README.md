@@ -173,3 +173,50 @@ Filtrul AI a redus procentul de cadre în care gestul a fost interpretat incorec
 Scorul mediu Hailo (hailo_score) de ~S indică faptul că modelul răspunde diferit în funcție de prezența sau absența mâinii în ROI, ceea ce confirmă funcționarea corectă a pipeline-ului AI.
 
 Per ansamblu, integrarea modulului Hailo-8 a permis realizarea unei interfețe gestuale filtrate de un model AI edge, menținând în același timp timpi de răspuns compatibili cu utilizarea într-o interfață în timp aproape real, specifică roboților chirurgicali și echipamentelor industriale.
+
+
+==========================================================================================================================================================================================================================================
+ * research started for Braccio integration
+
+ 1. Arhitectura generală
+
+Raspberry Pi + cameră:
+
+* face tracking mână (segmentare piele + MediaPipe),
+
+* generează comenzi text de tip Move Left / Move Right / Centered / No hand,
+
+* le trimite prin TCP la server (CommandSender din scripturile tale).
+
+Server TCP (robot_server.py):
+
+doar afișează ce primește. 
+
+robot_server
+
+! Cu Braccio:
+
+* Braccio + Arduino (Braccio Shield + Arduino UNO/MEGA, library oficială Braccio).
+
+* Un PC / RPi care rulează robot_server.py modificat:
+
+** primește de la hand-tracking,
+
+** convertește comanda în un set de unghiuri de servo,
+
+** le trimite prin serial (USB) către Arduino,
+
+Arduino rulează un sketch foarte simplu care:
+
+* citește un șir gen: B,90,90,90,90,90,10\n
+
+* face Braccio.ServoMovement(20, b, s, e, w1, w2, g).
+
+* Practic: RPi → TCP → PC/RobotServer → (Serial) → Arduino → Braccio
+
+Se intentioneaza rularea serverului direct pe RPi,
+
+ ! RPi trimite prin USB la Arduino.
+
+
+
